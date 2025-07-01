@@ -121,6 +121,7 @@ def main():
             # =========================================================
             # DWIs registration
             # =========================================================
+            # TODO: add new reg methods.
             data, registration_image_data, ref_images, reg_mask = image_registration(
                 data, slices, info, settings, logger
             )
@@ -375,3 +376,6 @@ def main():
         logger.info("==================== FAILED FOLDERS!:")
         for folder in failed_folders:
             logger.info(folder)
+
+if __name__ == "__main__":
+    main()

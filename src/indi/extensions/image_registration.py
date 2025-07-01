@@ -242,6 +242,15 @@ def registration_loop(
         # replace images in the dataframe
         for i in data.index:
             data.at[i, "image"] = img_reg[i]
+    
+    # TODO: add low-rank groupwise registration
+    elif settings["registration"] == "low_rank_groupwise":
+        # get all images
+        mov_all = np.ascontiguousarray(np.array(mov_all, dtype=np.float32))
+        # store images before registration
+        registration_image_data["img_pre_reg"] = np.copy(mov_all)
+
+        
 
     else:
         # if not groupwise registration
@@ -648,7 +657,7 @@ def get_registration_mask(info: dict, settings: dict) -> tuple[NDArray, NDArray]
 
     Returns
     -------
-    registratio mask and its contour points for debug plotting
+    registration mask and its contour points for debug plotting
 
     """
 
@@ -703,6 +712,7 @@ def image_registration(
             # dataframe for each slice
             current_entries = data.loc[data["slice_integer"] == slice_idx]
             # get the reference image
+            # TODO: revise this for low-rank groupwise
             ref_images[slice_idx] = get_ref_image(current_entries, slice_idx, settings, logger)
 
             # save reference images
