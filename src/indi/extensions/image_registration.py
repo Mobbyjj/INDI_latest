@@ -221,7 +221,8 @@ def registration_loop(
 
         # store images before registration
         registration_image_data["img_pre_reg"] = np.copy(mov_all)
-
+        # save the current_entries and the move_all for registration
+        
         # register all images groupwise
         img_reg, result_transform_parameters = itk.elastix_registration_method(
             mov_all,
@@ -250,7 +251,7 @@ def registration_loop(
         # store images before registration
         registration_image_data["img_pre_reg"] = np.copy(mov_all)
 
-        
+
 
     else:
         # if not groupwise registration
