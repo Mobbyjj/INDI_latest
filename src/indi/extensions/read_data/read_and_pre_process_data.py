@@ -102,7 +102,9 @@ def data_summary_plots_and_logs(data: pd.DataFrame, settings: dict, info: dict, 
     # image dimensions
     logger.debug("Image size: " + str(info["img_size"]))
     # resolution
-    logger.debug(f"Slice spacing: {info["slice_spacing"]:0.2f}")
+    # logger.debug(f"Slice spacing: {info["slice_spacing"]:0.2f}")
+    logger.debug(f"Slice spacing: {info['slice_spacing']:0.2f}")
+
     logger.debug("Pixel spacing: " + str(info["pixel_spacing"]))
 
     # print the diffusion protocol in detail if not too complicated
@@ -163,8 +165,10 @@ def get_diffusion_summary_for_slice(
                     lambda x: tuple(x) if isinstance(x, list) else x
                 )
             c_table["diffusion_direction_original"].unique()
-            logger.debug(f"   directions: {len(c_table["diffusion_direction_original"].unique())}")
-            logger.debug(f"   repetitions: {len(c_table)/len(c_table["diffusion_direction_original"].unique())}")
+            logger.debug(f"   directions: {len(c_table['diffusion_direction_original'].unique())}")
+
+            # logger.debug(f"   directions: {len(c_table["diffusion_direction_original"].unique())}")
+            logger.debug(f"   repetitions: {len(c_table)/len(c_table['diffusion_direction_original'].unique())}")
 
     return configs_table_this_slice
 
