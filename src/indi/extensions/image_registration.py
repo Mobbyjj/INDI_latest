@@ -13,6 +13,56 @@ from skimage.registration import phase_cross_correlation
 from skimage.restoration import denoise_nl_means, estimate_sigma
 from tqdm import tqdm
 
+from sklearn.decomposition import PCA
+
+def PCA_rank(c_img: NDArray)-> [NDArray]:
+    """
+
+    Denoise image with low-rank, get the 
+
+    Parameters
+    ----------
+    c_img
+
+    Returns
+    -------
+    denoised image
+
+    """
+    recon_imgs = []
+    pixel_data = c_img.reshape((-1, c_img.shape[2]))
+    showranks = [1,6]
+    for n_components in showranks:
+        pca = PCA(n_components=n_components)
+        pca_result = pca.fit_transform(pixel_data)
+        reconstructed_stack = pca.inverse_transform(pca_result).reshape(c_img.shape)
+        recon_imgs.append(reconstructed_stack)
+    
+    return recon_imgs
+
+def template_recon(c_img: NDArray)-> NDArray:
+    '''
+    stack_img: nx, ny, nz
+    output: nx, ny
+    '''
+    # geometric average along the third dimension
+    template = np.log(np.abs(c_img) + 1e-6)
+    template = np.mean(template, axis= 2)
+    template = np.exp(template)
+    return template
+
+def low_rank_denoising(c_img: NDArray)-> NDArray:
+    '''
+    stack_img: nx, ny, nz
+    output: nx, ny, nz
+    '''
+    c_img = np.transpose(c_img, (1,2,0))
+    low_rank = PCA_rank(c_img)
+    # generate the template on rank1 image.
+    ref_img = template_recon(low_rank[0])
+    denoised_img = low_rank[1]
+    denoised_img = np.transpose(denoised_img, (2,0,1))
+    return ref_img, denoised_img
 
 def get_grid_image(img_shape: NDArray, grid_step: int) -> NDArray:
     """
@@ -250,8 +300,79 @@ def registration_loop(
         mov_all = np.ascontiguousarray(np.array(mov_all, dtype=np.float32))
         # store images before registration
         registration_image_data["img_pre_reg"] = np.copy(mov_all)
+        
+        ref, denoised_img = low_rank_denoising(mov_all)
+        
+        parameter_object = itk.ParameterObject.New()
+        parameter_object.AddParameterFile(os.path.join(script_path, "image_registration_recipes", "Elastix_rigid.txt"))
+        if settings["registration_speed"] == "slow":
+            parameter_object.SetParameter("MaximumNumberOfIterations", "2000")
+            parameter_object.SetParameter("NumberOfResolutions", "4")
 
+        for i in tqdm(range(ref_images["n_images"]), desc="Registering images"):
+            # moving image
+            mov = np.asarray(mov_all[i], dtype=np.float32)
+            registration_image_data["img_pre_reg"][i] = mov
+            if settings["complex_data"]:
+                mov_phase = np.asarray(mov_all_phase[i], dtype=np.float32)
 
+            # run registration
+            # elastix
+            if (
+                settings["registration"] == "elastix_rigid"
+                or settings["registration"] == "elastix_affine"
+                or settings["registration"] == "elastix_non_rigid"
+                or settings["registration"] == "low_rank_groupwise"
+
+            ):
+                # apply the registration to a denoised version (helps with registration of low SNR images)
+                # mov_norm = (mov - np.min(mov)) / (np.max(mov) - np.min(mov))
+                # denoised_mov = denoise_img_nlm(mov_norm)
+                
+                # denoised_mov = itk.GetImageFromArray(denoised_mov)
+
+                denoised_mov = itk.GetImageFromArray(denoised_img[i])
+                
+                img_reg, result_transform_parameters = itk.elastix_registration_method(
+                    ref,
+                    denoised_mov,
+                    parameter_object=parameter_object,
+                    fixed_mask=mask,
+                    log_to_console=False,
+                )
+
+                # get the deformation field and apply it to the grid image
+                def_field = itk.transformix_deformation_field(denoised_mov, result_transform_parameters)
+                os.remove("deformationField.raw")
+                os.remove("deformationField.mhd")
+                def_field = np.asarray(def_field).astype(np.float32)
+                registration_image_data["deformation_field"]["field"][i] = def_field
+                # get the deformation grid
+                grid_img = get_grid_image(info["img_size"], 10)
+                grid_img_itk = itk.GetImageFromArray(grid_img)
+                grid_img_transformed = itk.transformix_filter(grid_img_itk, result_transform_parameters)
+                grid_img_transformed_np = itk.GetArrayFromImage(grid_img_transformed)
+                grid_img_transformed_np[grid_img_transformed_np < 0.1] = 0
+                grid_img_transformed_np[grid_img_transformed_np >= 0.1] = 0.6
+                registration_image_data["deformation_field"]["grid"][i] = grid_img_transformed_np
+                # finally apply the deformation field to the moving image (without denoising)
+                if settings["complex_data"]:
+                    # complex data registration
+                    c_real = np.multiply(mov, np.cos(mov_phase))
+                    c_imag = np.multiply(mov, np.sin(mov_phase))
+                    c_real = itk.GetImageFromArray(c_real)
+                    c_imag = itk.GetImageFromArray(c_imag)
+                    img_reg_real = itk.transformix_filter(c_real, result_transform_parameters)
+                    img_reg_imag = itk.transformix_filter(c_imag, result_transform_parameters)
+                    img_reg_real = itk.GetArrayFromImage(img_reg_real)
+                    img_reg_imag = itk.GetArrayFromImage(img_reg_imag)
+                    img_reg = np.sqrt(np.square(img_reg_real) + np.square(img_reg_imag))
+                    img_phase_reg = np.arctan2(img_reg_imag, img_reg_real)
+                else:
+                    # magnitude only data registration
+                    mov = itk.GetImageFromArray(mov)
+                    img_reg = itk.transformix_filter(mov, result_transform_parameters)
+                    img_reg = itk.GetArrayFromImage(img_reg)
 
     else:
         # if not groupwise registration
@@ -457,7 +578,8 @@ def get_ref_image(current_entries: pd.DataFrame, slice_idx: int, settings: dict,
                 + str(n_images)
                 + " images found for the lowest b-value, registering them groupwise for a reference. Please hold..."
             )
-
+            # TODO: add the low-rank reference frame
+            
             # stack all images to be registered
             image_stack = np.stack(current_entries["image"][index_pos].values)
 
