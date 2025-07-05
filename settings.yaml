@@ -6,9 +6,9 @@
 # WORKFLOWS
 # ========================================================================================
 # Startup folder
-start_folder: /Users/mobbywang/Downloads/HV20/diastole/M123_copy/
+start_folder: /Users/wangfanwen/Projects/cDTIData/LowRank2nd/HV20/systole/M12
 # anon, reg, main
-workflow_mode: reg
+workflow_mode: main
 # se, steam
 sequence_type: se
 
@@ -25,7 +25,7 @@ registration_extra_debug: False
 # ========================================================================================
 # none, quick_rigid, elastix_rigid, elastix_affine, elastix_non_rigid
 # elastix_groupwise (not working well at the moment)
-registration: elastix_groupwise
+registration: low_rank_groupwise
 # fast, slow
 registration_speed: fast
 # first, best, groupwise
